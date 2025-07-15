@@ -1,6 +1,6 @@
 # GoProxyTunnel
 
-GoProxyTunnel is a lightweight and versatile TCP proxy tunnel built in Go. It enables you to tunnel TCP connections through an HTTP or HTTPS proxy using the CONNECT method. Additionally, it can operate as a SOCKS5 proxy server, allowing SOCKS5 clients to tunnel their TCP connections through an upstream HTTP/HTTPS proxy.
+GoProxyTunnel is a lightweight and versatile TCP proxy tunnel built in Go. It enables you to tunnel TCP connections through an HTTP or HTTPS proxy using the CONNECT method. Additionally, it can operate as a SOCKS5 proxy server, allowing SOCKS5 clients to tunnel their TCP connections through an upstream HTTP/HTTPS proxy. (UDP is not supported.)
 
 This project aims to serve as an alternative to [proxytunnel](https://github.com/proxytunnel/proxytunnel).
 
