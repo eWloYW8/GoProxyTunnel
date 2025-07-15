@@ -2,6 +2,8 @@
 
 GoProxyTunnel is a lightweight and versatile TCP proxy tunnel built in Go. It enables you to tunnel TCP connections through an HTTP or HTTPS proxy using the `CONNECT` method.
 
+This project aims to serve as an alternative to [proxytunnel](https://github.com/proxytunnel/proxytunnel).
+
 [![Build and Release](https://github.com/eWloYW8/GoProxyTunnel/actions/workflows/build.yml/badge.svg)](https://github.com/eWloYW8/GoProxyTunnel/actions/workflows/build.yml)
 
 ## Installation
