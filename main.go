@@ -127,7 +127,7 @@ func main() {
 		missingFlags = append(missingFlags, "target")
 	}
 
-	fmt.Fprintln(os.Stderr, "GoProxyTunnel - A TCP proxy tunnel over HTTP CONNECT in Go.\n")
+	fmt.Fprintln(os.Stderr, "GoProxyTunnel - A TCP proxy tunnel over HTTP CONNECT in Go.")
 
 	if useStdio && localListenAddrStr != "" {
 		logger.Fatalf("Error: Cannot use -stdio and -listen together. Choose one mode of operation.")
