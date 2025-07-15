@@ -1,6 +1,6 @@
 # GoProxyTunnel
 
-GoProxyTunnel is a lightweight and versatile TCP proxy tunnel built in Go. It enables you to tunnel TCP connections through an HTTP or HTTPS proxy using the `CONNECT` method.
+GoProxyTunnel is a lightweight and versatile TCP proxy tunnel built in Go. It enables you to tunnel TCP connections through an HTTP or HTTPS proxy using the CONNECT method. Additionally, it can operate as a SOCKS5 proxy server, allowing SOCKS5 clients to tunnel their TCP connections through an upstream HTTP/HTTPS proxy.
 
 This project aims to serve as an alternative to [proxytunnel](https://github.com/proxytunnel/proxytunnel).
 
@@ -56,20 +56,30 @@ ssh user@your-target-ip -o "ProxyCommand ./GoProxyTunnel -proxy proxy.example.co
 
 This command configures SSH to use `GoProxyTunnel` as a `ProxyCommand`. It tunnels your SSH connection to `your-target-ip` through `proxy.example.com:8443`, using the provided credentials. The `-stdio` and `-silent` flags are crucial for `ProxyCommand` integration to ensure standard I/O is used and no extraneous logs interfere with SSH. `%h` and `%p` are SSH placeholders for the target host and port.
 
+**5. Operating in SOCKS5 proxy mode:**
+
+```bash
+./GoProxyTunnel -proxy proxy.example.com:8443 -listen 127.0.0.1:1080 -socks5
+```
+
+In this mode, GoProxyTunnel acts as a **SOCKS5 server** on `127.0.0.1:1080`. Any SOCKS5 client connecting to this address can then issue `CONNECT` requests for arbitrary target addresses, which GoProxyTunnel will tunnel through `proxy.example.com:8443`. Note that **UDP is not supported** in this mode.
+
+-----
+
 ### Command-Line Arguments
 
 GoProxyTunnel offers several command-line flags to configure its behavior:
 
-| Flag                 | Description                                                                                                                                           | Default       | Required                       |
+| Flag | Description | Default | Required |
 | :------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------- | :------------ | :----------------------------- |
-| `-proxy`             | **REQUIRED:** Proxy server address (e.g., `proxy.example.com:8443`).                                                                                    |               | Yes                            |
-| `-target`            | **REQUIRED:** Target server address (e.g., `192.168.1.100:8080`).                                                                                         |               | Yes                            |
-| `-listen`            | Local address and port to listen on (e.g., `127.0.0.1:25000`). Required unless `-stdio` is used.                                                          | `""`          | Yes (unless `-stdio` is used)  |
-| `-stdio`             | Use `stdin`/`stdout` for communication instead of listening on a network address. Conflicts with `-listen`. Recommend using `-silent` with this flag. | `false`       | Yes (unless `-listen` is used) |
-| `-proxy-scheme`      | Proxy scheme (`http` or `https`).                                                                                                                     | `https`       | No                             |
-| `-target-tls`        | Whether to use TLS on the target connection after the proxy tunnel is established.                                                                      | `false`       | No                             |
-| `-auth-creds`        | Proxy-Authorization credentials (format: `"username:password"`). Will be Base64 encoded automatically.                                                | `""`          | No                             |
-| `-headers`           | Comma-separated custom request headers (e.g., `"User-Agent:GoProxy,X-Forwarded-For:1.2.3.4"`).                                                         | `""`          | No                             |
-| `-verbose`           | Enable verbose logging to `stderr`.                                                                                                                   | `false`       | No                             |
-| `-silent`            | Disable all logging output to `stderr`. Recommended when using `-stdio`.                                                                               | `false`       | No                             |
-
+| `-proxy` | **REQUIRED:** Proxy server address (e.g., `proxy.example.com:8443`). | `""` | Yes |
+| `-target` | Target server address (e.g., `192.168.1.100:8080`). **Required unless `-socks5` is used.** | `""` | Yes (unless `-socks5` is used) |
+| `-listen` | Local address and port to listen on (e.g., `127.0.0.1:25000`). **Required unless `-stdio` is used.** | `""` | Yes (unless `-stdio` is used) |
+| `-stdio` | Use `stdin`/`stdout` for communication instead of listening on a network address. Conflicts with `-listen`. Recommended using `-silent` with this flag. | `false` | Yes (unless `-listen` is used) |
+| `-socks5` | Enable **SOCKS5 proxy mode**. When enabled, `-target` is not used, and the listen port acts as a SOCKS5 server. (UDP is not supported.) | `false` | No |
+| `-proxy-scheme` | Proxy scheme (`http` or `https`). | `https` | No |
+| `-target-tls` | Whether to use TLS on the target connection after the proxy tunnel is established. | `false` | No |
+| `-auth-creds` | Proxy-Authorization credentials (format: `"username:password"`). Will be Base64 encoded automatically. | `""` | No |
+| `-headers` | Comma-separated custom request headers (e.g., `"User-Agent:GoProxy,X-Forwarded-For:1.2.3.4"`). | `""` | No |
+| `-verbose` | Enable verbose logging to `stderr`. | `false` | No |
+| `-silent` | Disable all logging output to `stderr`. Recommended when using `-stdio`. | `false` | No |
