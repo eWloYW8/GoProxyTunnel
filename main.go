@@ -64,8 +64,8 @@ func init() {
 		}
 
 		fmt.Fprintln(os.Stderr, "Usage:")
-		fmt.Fprintln(os.Stderr, "  ConnectForwarder -proxy proxy.example.com:8443 -target 192.168.1.100:8080 -listen 127.0.0.1:25000")
-		fmt.Fprintln(os.Stderr, "  ConnectForwarder -proxy proxy.example.com:8443 -target 192.168.1.100:8080 -stdio")
+		fmt.Fprintln(os.Stderr, "  GoProxyTunnel -proxy proxy.example.com:8443 -target 192.168.1.100:8080 -listen 127.0.0.1:25000")
+		fmt.Fprintln(os.Stderr, "  GoProxyTunnel -proxy proxy.example.com:8443 -target 192.168.1.100:8080 -stdio")
 
 		allFlags := make(map[string]*flag.Flag)
 		flag.VisitAll(func(f *flag.Flag) {
