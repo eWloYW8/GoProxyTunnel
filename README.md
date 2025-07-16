@@ -71,7 +71,7 @@ In this mode, GoProxyTunnel acts as a **SOCKS5 server** on `127.0.0.1:1080`. Any
 GoProxyTunnel offers several command-line flags to configure its behavior:
 
 | Flag | Description | Default | Required |
-| :------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------- | :------------ | :----------------------------- |
+| :-------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------ | :----------------------------- |
 | `-proxy` | **REQUIRED:** Proxy server address (e.g., `proxy.example.com:8443`). | `""` | Yes |
 | `-target` | Target server address (e.g., `192.168.1.100:8080`). **Required unless `-socks5` is used.** | `""` | Yes (unless `-socks5` is used) |
 | `-listen` | Local address and port to listen on (e.g., `127.0.0.1:25000`). **Required unless `-stdio` is used.** | `""` | Yes (unless `-stdio` is used) |
@@ -83,13 +83,20 @@ GoProxyTunnel offers several command-line flags to configure its behavior:
 | `-headers` | Comma-separated custom request headers (e.g., `"User-Agent:GoProxy,X-Forwarded-For:1.2.3.4"`). | `""` | No |
 | `-verbose` | Enable verbose logging to `stderr`. | `false` | No |
 | `-silent` | Disable all logging output to `stderr`. Recommended when using `-stdio`. | `false` | No |
-
+| `-proxy-ca-cert` | Path to a custom CA certificate file for the **proxy** (PEM format). | `""` | No |
+| `-proxy-client-cert` | Path to a client certificate file for **proxy** mutual TLS (PEM format). | `""` | No |
+| `-proxy-client-key` | Path to a client private key file for **proxy** mutual TLS (PEM format). | `""` | No |
+| `-insecure-proxy-tls` | Disable TLS certificate verification for the **proxy** connection (**USE WITH CAUTION**). | `false` | No |
+| `-target-ca-cert` | Path to a custom CA certificate file for the **target** (PEM format). | `""` | No |
+| `-target-client-cert` | Path to a client certificate file for **target** mutual TLS (PEM format). | `""` | No |
+| `-target-client-key` | Path to a client private key file for **target** mutual TLS (PEM format). | `""` | No |
+| `-insecure-target-tls` | Disable TLS certificate verification for the **target** connection (**USE WITH CAUTION**). | `false` | No |
 
 ## TODO
 
-- [ ] Custom TLS certificates for proxy or target connections  
+- [x] Custom TLS certificates for proxy or target connections  
 - [ ] Loading configuration from a YAML file  
-- [ ] Option to disable certificate verification for testing purposes  
+- [x] Option to disable certificate verification for testing purposes  
 - [ ] Configurable connection timeouts and automatic retries  
 
 Contributions are welcome! Feel free to open issues or submit pull requests to help improve this project.

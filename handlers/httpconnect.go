@@ -3,15 +3,54 @@ package handlers
 import (
 	"bufio"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/eWloYW8/GoProxyTunnel/config"
 )
+
+// createTLSConfig creates a *tls.Config based on provided certificate files and insecure flag.
+func createTLSConfig(caCertFile, clientCertFile, clientKeyFile string, insecureSkipVerify bool, logger *log.Logger) (*tls.Config, error) {
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: insecureSkipVerify,
+	}
+
+	if caCertFile != "" {
+		caCert, err := os.ReadFile(caCertFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA certificate from %s: %w", caCertFile, err)
+		}
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to parse CA certificate from %s", caCertFile)
+		}
+		tlsConfig.RootCAs = caCertPool
+		logger.Printf("Loaded custom CA certificate from %s", caCertFile)
+	}
+
+	if clientCertFile != "" && clientKeyFile != "" {
+		clientCert, err := tls.LoadX509KeyPair(clientCertFile, clientKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client certificate and key from %s and %s: %w", clientCertFile, clientKeyFile, err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{clientCert}
+		logger.Printf("Loaded client certificate and key from %s and %s", clientCertFile, clientKeyFile)
+	} else if clientCertFile != "" || clientKeyFile != "" {
+		return nil, fmt.Errorf("both client certificate and key files must be provided if one is specified")
+	}
+
+	if insecureSkipVerify {
+		logger.Printf("TLS certificate verification is DISABLED (insecureSkipVerify=true).")
+	}
+
+	return tlsConfig, nil
+}
 
 // HandleHTTPConnect manages a client connection and tunnels it through an HTTP CONNECT proxy.
 func HandleHTTPConnect(target string, clientConn net.Conn, cfg *config.Config, logger *log.Logger) {
@@ -24,7 +63,12 @@ func HandleHTTPConnect(target string, clientConn net.Conn, cfg *config.Config, l
 	var err error
 
 	if cfg.ProxyScheme == "https" {
-		proxyConn, err = tls.Dial("tcp", cfg.ProxyAddr, nil)
+		proxyTLSConfig, err := createTLSConfig(cfg.ProxyCACertFile, cfg.ProxyClientCertFile, cfg.ProxyClientKeyFile, cfg.InsecureProxyTLS, logger)
+		if err != nil {
+			logger.Printf("[%s] Failed to create proxy TLS config: %v", clientAddr, err)
+			return
+		}
+		proxyConn, err = tls.Dial("tcp", cfg.ProxyAddr, proxyTLSConfig)
 		if err != nil {
 			logger.Printf("[%s] Failed to connect to HTTPS proxy %s: %v", clientAddr, cfg.ProxyAddr, err)
 			return
@@ -87,10 +131,13 @@ func HandleHTTPConnect(target string, clientConn net.Conn, cfg *config.Config, l
 
 	var targetConn net.Conn = proxyConn
 	if cfg.UseTLSOnTarget {
-		tlsConn := tls.Client(proxyConn, &tls.Config{
-			ServerName:         targetHostForConnect,
-			InsecureSkipVerify: true, // You might want to remove this in production for proper certificate validation
-		})
+		targetTLSConfig, err := createTLSConfig(cfg.TargetCACertFile, cfg.TargetClientCertFile, cfg.TargetClientKeyFile, cfg.InsecureTargetTLS, logger)
+		if err != nil {
+			logger.Printf("[%s] Failed to create target TLS config: %v", clientAddr, err)
+			return
+		}
+		targetTLSConfig.ServerName = targetHostForConnect // crucial for target TLS
+		tlsConn := tls.Client(proxyConn, targetTLSConfig)
 		err = tlsConn.Handshake()
 		if err != nil {
 			logger.Printf("[%s] Target TLS handshake failed for %s: %v", clientAddr, target, err)

@@ -22,6 +22,15 @@ type Config struct {
 	SilentLog          bool
 	UseSocks5Proxy     bool
 
+	ProxyCACertFile      string
+	ProxyClientCertFile  string
+	ProxyClientKeyFile   string
+	TargetCACertFile     string
+	TargetClientCertFile string
+	TargetClientKeyFile  string
+	InsecureProxyTLS     bool
+	InsecureTargetTLS    bool
+
 	LocalListenAddr *net.TCPAddr
 	ProxyAddr       string
 	TargetAddr      string // This will be set dynamically per SOCKS5 request
@@ -43,6 +52,17 @@ func ParseFlags() *Config {
 	flag.BoolVar(&cfg.UseStdio, "stdio", false, "Use stdin/stdout for communication instead of listening on a network address. Conflicts with -listen. Recommend using -silent with this flag to suppress logging.")
 	flag.BoolVar(&cfg.SilentLog, "silent", false, "Disable all logging output to stderr.")
 	flag.BoolVar(&cfg.UseSocks5Proxy, "socks5", false, "Enable SOCKS5 proxy mode. When enabled, -target is not used, and the listen port acts as a SOCKS5 server. (UDP is not supported.)")
+
+	// TLS flags
+	flag.StringVar(&cfg.ProxyCACertFile, "proxy-ca-cert", "", "Path to a custom CA certificate file for the proxy (PEM format).")
+	flag.StringVar(&cfg.ProxyClientCertFile, "proxy-client-cert", "", "Path to a client certificate file for proxy mutual TLS (PEM format).")
+	flag.StringVar(&cfg.ProxyClientKeyFile, "proxy-client-key", "", "Path to a client private key file for proxy mutual TLS (PEM format).")
+	flag.BoolVar(&cfg.InsecureProxyTLS, "insecure-proxy-tls", false, "Disable TLS certificate verification for the proxy connection (USE WITH CAUTION).")
+
+	flag.StringVar(&cfg.TargetCACertFile, "target-ca-cert", "", "Path to a custom CA certificate file for the target (PEM format).")
+	flag.StringVar(&cfg.TargetClientCertFile, "target-client-cert", "", "Path to a client certificate file for target mutual TLS (PEM format).")
+	flag.StringVar(&cfg.TargetClientKeyFile, "target-client-key", "", "Path to a client private key file for target mutual TLS (PEM format).")
+	flag.BoolVar(&cfg.InsecureTargetTLS, "insecure-target-tls", false, "Disable TLS certificate verification for the target connection (USE WITH CAUTION).")
 
 	flag.Usage = PrintUsage // Set custom usage function
 
@@ -67,6 +87,14 @@ func PrintUsage() {
 		"headers",
 		"verbose",
 		"silent",
+		"proxy-ca-cert",
+		"proxy-client-cert",
+		"proxy-client-key",
+		"insecure-proxy-tls",
+		"target-ca-cert",
+		"target-client-cert",
+		"target-client-key",
+		"insecure-target-tls",
 	}
 
 	fmt.Fprintln(os.Stderr, "Usage:")
@@ -82,7 +110,6 @@ func PrintUsage() {
 	fmt.Fprintln(os.Stderr, "\n  Required Parameters (always):")
 	for _, name := range requiredFlagsOrder {
 		if f, ok := allFlags[name]; ok {
-			// Special handling for boolean flags to print default value correctly
 			defaultValue := f.DefValue
 			if f.DefValue == "false" || f.DefValue == "true" {
 				defaultValue = fmt.Sprintf("%t", f.DefValue == "true")
@@ -105,7 +132,6 @@ func PrintUsage() {
 		fmt.Fprintf(os.Stderr, "    -%s %s\n        %s\n", f.Name, f.DefValue, f.Usage)
 		delete(allFlags, "target")
 	}
-	// SOCKS5 mode is distinct but related to connection mode
 	if f, ok := allFlags["socks5"]; ok {
 		fmt.Fprintf(os.Stderr, "    -%s %s\n        %s\n", f.Name, f.DefValue, f.Usage)
 		delete(allFlags, "socks5")
@@ -115,7 +141,6 @@ func PrintUsage() {
 	for _, name := range optionalFlagsOrder {
 		if _, ok := allFlags[name]; ok {
 			f := allFlags[name]
-			// Special handling for boolean flags to print default value correctly
 			defaultValue := f.DefValue
 			if f.DefValue == "false" || f.DefValue == "true" {
 				defaultValue = fmt.Sprintf("%t", f.DefValue == "true")
@@ -127,11 +152,8 @@ func PrintUsage() {
 
 	if len(allFlags) > 0 {
 		fmt.Fprintln(os.Stderr, "\n  Other Parameters (alphabetical):")
-		// Flag.PrintDefaults() would print all, but we already printed some
-		// So iterate and print only those not yet printed
 		flag.VisitAll(func(f *flag.Flag) {
-			if _, ok := allFlags[f.Name]; ok { // Only print if still in 'allFlags'
-				// Special handling for boolean flags to print default value correctly
+			if _, ok := allFlags[f.Name]; ok {
 				defaultValue := f.DefValue
 				if f.DefValue == "false" || f.DefValue == "true" {
 					defaultValue = fmt.Sprintf("%t", f.DefValue == "true")
