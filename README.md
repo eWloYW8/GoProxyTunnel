@@ -91,6 +91,10 @@ GoProxyTunnel offers several command-line flags to configure its behavior:
 | `-target-client-cert` | Path to a client certificate file for **target** mutual TLS (PEM format). | `""` | No |
 | `-target-client-key` | Path to a client private key file for **target** mutual TLS (PEM format). | `""` | No |
 | `-insecure-target-tls` | Disable TLS certificate verification for the **target** connection (**USE WITH CAUTION**). | `false` | No |
+| `-connect-timeout` | Timeout for establishing a new connection (e.g., `5s`, `1m`). | `5s` | No |
+| `-rw-timeout` | Timeout for read/write operations on established connections (e.g., `30s`, `2m`). Set to `0` for no timeout. | `30s` | No |
+| `-max-retries` | Maximum number of connection retries on failure (`0` for no retries). | `3` | No |
+| `-retry-delay` | Delay between connection retry attempts (e.g., `2s`, `500ms`). | `2s` | No |
 
 ## TODO
 
