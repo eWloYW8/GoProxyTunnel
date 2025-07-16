@@ -97,6 +97,6 @@ GoProxyTunnel offers several command-line flags to configure its behavior:
 - [x] Custom TLS certificates for proxy or target connections  
 - [ ] Loading configuration from a YAML file  
 - [x] Option to disable certificate verification for testing purposes  
-- [ ] Configurable connection timeouts and automatic retries  
+- [x] Configurable connection timeouts and automatic retries  
 
 Contributions are welcome! Feel free to open issues or submit pull requests to help improve this project.

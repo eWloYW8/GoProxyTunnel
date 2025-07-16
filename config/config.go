@@ -1,3 +1,5 @@
+// FILE: config/config.go
+
 package config
 
 import (
@@ -6,6 +8,9 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sort"
+	"strings"
+	"time"
 )
 
 // Config holds all the application's configuration parameters.
@@ -31,6 +36,11 @@ type Config struct {
 	InsecureProxyTLS     bool
 	InsecureTargetTLS    bool
 
+	ConnectTimeout   time.Duration // Timeout for establishing a new connection
+	ReadWriteTimeout time.Duration // Timeout for read/write operations on established connections
+	MaxRetries       int           // Maximum number of connection retries
+	RetryDelay       time.Duration // Delay between retry attempts
+
 	LocalListenAddr *net.TCPAddr
 	ProxyAddr       string
 	TargetAddr      string // This will be set dynamically per SOCKS5 request
@@ -44,7 +54,7 @@ func ParseFlags() *Config {
 	flag.StringVar(&cfg.LocalListenAddrStr, "listen", "", "Local address and port to listen on (e.g., 127.0.0.1:25000). Required unless -stdio is used.")
 	flag.StringVar(&cfg.ProxyScheme, "proxy-scheme", "https", "Proxy scheme (http or https)")
 	flag.StringVar(&cfg.ProxyAddrStr, "proxy", "", "REQUIRED: Proxy server address (e.g., proxy.example.com:8443)")
-	flag.StringVar(&cfg.TargetAddrStr, "target", "", "Target server address (e.g., 192.168.1.100:8080). Required unless -socks5 is used.") // Updated description
+	flag.StringVar(&cfg.TargetAddrStr, "target", "", "Target server address (e.g., 192.168.1.100:8080). Required unless -socks5 is used.")
 	flag.BoolVar(&cfg.UseTLSOnTarget, "target-tls", false, "Whether to use TLS on the target connection")
 	flag.StringVar(&cfg.CustomHeadersStr, "headers", "", "Comma-separated custom request headers (e.g., \"User-Agent:GoProxy,X-Forwarded-For:1.2.3.4\")")
 	flag.StringVar(&cfg.AuthorizationCreds, "auth-creds", "", "Proxy-Authorization credentials (format: \"username:password\"). Will be Base64 encoded automatically.")
@@ -64,6 +74,12 @@ func ParseFlags() *Config {
 	flag.StringVar(&cfg.TargetClientKeyFile, "target-client-key", "", "Path to a client private key file for target mutual TLS (PEM format).")
 	flag.BoolVar(&cfg.InsecureTargetTLS, "insecure-target-tls", false, "Disable TLS certificate verification for the target connection (USE WITH CAUTION).")
 
+	// flags for timeouts and retries
+	flag.DurationVar(&cfg.ConnectTimeout, "connect-timeout", 5*time.Second, "Timeout for establishing a new connection (e.g., 5s, 1m).")
+	flag.DurationVar(&cfg.ReadWriteTimeout, "rw-timeout", 30*time.Second, "Timeout for read/write operations on established connections (e.g., 30s, 2m). Set to 0 for no timeout.")
+	flag.IntVar(&cfg.MaxRetries, "max-retries", 3, "Maximum number of connection retries on failure (0 for no retries).")
+	flag.DurationVar(&cfg.RetryDelay, "retry-delay", 2*time.Second, "Delay between connection retry attempts (e.g., 2s, 500ms).")
+
 	flag.Usage = PrintUsage // Set custom usage function
 
 	flag.Parse()
@@ -76,17 +92,14 @@ func PrintUsage() {
 		"proxy",
 	}
 
-	optionalFlagsOrder := []string{
+	connectionModeFlagsOrder := []string{
 		"listen",
 		"stdio",
 		"socks5",
 		"target",
-		"proxy-scheme",
-		"target-tls",
-		"auth-creds",
-		"headers",
-		"verbose",
-		"silent",
+	}
+
+	tlsFlagsOrder := []string{
 		"proxy-ca-cert",
 		"proxy-client-cert",
 		"proxy-client-key",
@@ -95,6 +108,22 @@ func PrintUsage() {
 		"target-client-cert",
 		"target-client-key",
 		"insecure-target-tls",
+		"target-tls",
+	}
+
+	timeoutRetryFlagsOrder := []string{
+		"connect-timeout",
+		"rw-timeout",
+		"max-retries",
+		"retry-delay",
+	}
+
+	otherOptionalFlagsOrder := []string{
+		"proxy-scheme",
+		"auth-creds",
+		"headers",
+		"verbose",
+		"silent",
 	}
 
 	fmt.Fprintln(os.Stderr, "Usage:")
@@ -114,53 +143,78 @@ func PrintUsage() {
 			if f.DefValue == "false" || f.DefValue == "true" {
 				defaultValue = fmt.Sprintf("%t", f.DefValue == "true")
 			}
-			fmt.Fprintf(os.Stderr, "    -%s %s\n        %s\n", f.Name, defaultValue, f.Usage)
+			fmt.Fprintf(os.Stderr, "    -%s %s\n      %s\n", f.Name, defaultValue, f.Usage)
 			delete(allFlags, name)
 		}
 	}
 
 	fmt.Fprintln(os.Stderr, "\n  Connection Mode Parameters:")
-	if f, ok := allFlags["listen"]; ok {
-		fmt.Fprintf(os.Stderr, "    -%s %s\n        %s\n", f.Name, f.DefValue, f.Usage)
-		delete(allFlags, "listen")
-	}
-	if f, ok := allFlags["stdio"]; ok {
-		fmt.Fprintf(os.Stderr, "    -%s %s\n        %s\n", f.Name, f.DefValue, f.Usage)
-		delete(allFlags, "stdio")
-	}
-	if f, ok := allFlags["target"]; ok {
-		fmt.Fprintf(os.Stderr, "    -%s %s\n        %s\n", f.Name, f.DefValue, f.Usage)
-		delete(allFlags, "target")
-	}
-	if f, ok := allFlags["socks5"]; ok {
-		fmt.Fprintf(os.Stderr, "    -%s %s\n        %s\n", f.Name, f.DefValue, f.Usage)
-		delete(allFlags, "socks5")
-	}
-
-	fmt.Fprintln(os.Stderr, "\n  Optional Parameters:")
-	for _, name := range optionalFlagsOrder {
-		if _, ok := allFlags[name]; ok {
-			f := allFlags[name]
+	for _, name := range connectionModeFlagsOrder {
+		if f, ok := allFlags[name]; ok {
 			defaultValue := f.DefValue
 			if f.DefValue == "false" || f.DefValue == "true" {
 				defaultValue = fmt.Sprintf("%t", f.DefValue == "true")
 			}
-			fmt.Fprintf(os.Stderr, "    -%s %s\n        %s\n", f.Name, defaultValue, f.Usage)
+			fmt.Fprintf(os.Stderr, "    -%s %s\n      %s\n", f.Name, defaultValue, f.Usage)
+			delete(allFlags, name)
+		}
+	}
+
+	fmt.Fprintln(os.Stderr, "\n  TLS Parameters:")
+	for _, name := range tlsFlagsOrder {
+		if f, ok := allFlags[name]; ok {
+			defaultValue := f.DefValue
+			if f.DefValue == "false" || f.DefValue == "true" {
+				defaultValue = fmt.Sprintf("%t", f.DefValue == "true")
+			}
+			fmt.Fprintf(os.Stderr, "    -%s %s\n      %s\n", f.Name, defaultValue, f.Usage)
+			delete(allFlags, name)
+		}
+	}
+
+	fmt.Fprintln(os.Stderr, "\n  Timeout and Retry Parameters:")
+	for _, name := range timeoutRetryFlagsOrder {
+		if f, ok := allFlags[name]; ok {
+			defaultValue := f.DefValue
+			if strings.HasSuffix(defaultValue, "0s") || strings.HasSuffix(defaultValue, "0ms") {
+				if d, err := time.ParseDuration(defaultValue); err == nil {
+					defaultValue = d.String()
+				}
+			}
+			fmt.Fprintf(os.Stderr, "    -%s %s\n      %s\n", f.Name, defaultValue, f.Usage)
+			delete(allFlags, name)
+		}
+	}
+
+	fmt.Fprintln(os.Stderr, "\n  Other Optional Parameters:")
+	for _, name := range otherOptionalFlagsOrder {
+		if f, ok := allFlags[name]; ok {
+			defaultValue := f.DefValue
+			if f.DefValue == "false" || f.DefValue == "true" {
+				defaultValue = fmt.Sprintf("%t", f.DefValue == "true")
+			}
+			fmt.Fprintf(os.Stderr, "    -%s %s\n      %s\n", f.Name, defaultValue, f.Usage)
 			delete(allFlags, name)
 		}
 	}
 
 	if len(allFlags) > 0 {
-		fmt.Fprintln(os.Stderr, "\n  Other Parameters (alphabetical):")
-		flag.VisitAll(func(f *flag.Flag) {
-			if _, ok := allFlags[f.Name]; ok {
-				defaultValue := f.DefValue
-				if f.DefValue == "false" || f.DefValue == "true" {
-					defaultValue = fmt.Sprintf("%t", f.DefValue == "true")
-				}
-				fmt.Fprintf(os.Stderr, "    -%s %s\n        %s\n", f.Name, defaultValue, f.Usage)
+		fmt.Fprintln(os.Stderr, "\n  Unhandled Parameters (alphabetical):")
+		// Sort keys for consistent output of unhandled flags
+		var unhandledKeys []string
+		for k := range allFlags {
+			unhandledKeys = append(unhandledKeys, k)
+		}
+		sort.Strings(unhandledKeys)
+
+		for _, name := range unhandledKeys {
+			f := allFlags[name]
+			defaultValue := f.DefValue
+			if f.DefValue == "false" || f.DefValue == "true" {
+				defaultValue = fmt.Sprintf("%t", f.DefValue == "true")
 			}
-		})
+			fmt.Fprintf(os.Stderr, "    -%s %s\n      %s\n", f.Name, defaultValue, f.Usage)
+		}
 	}
 }
 

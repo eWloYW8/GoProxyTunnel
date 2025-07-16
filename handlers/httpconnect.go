@@ -1,3 +1,5 @@
+// FILE: handlers/httpconnect.go
+
 package handlers
 
 import (
@@ -52,6 +54,38 @@ func createTLSConfig(caCertFile, clientCertFile, clientKeyFile string, insecureS
 	return tlsConfig, nil
 }
 
+// dialWithRetries attempts to establish a connection with retries and a timeout.
+func dialWithRetries(network, addr string, tlsConfig *tls.Config, cfg *config.Config, logger *log.Logger, clientAddr net.Addr) (net.Conn, error) {
+	var conn net.Conn
+	var err error
+
+	for i := 0; i <= cfg.MaxRetries; i++ {
+		if i > 0 {
+			logger.Printf("[%s] Retrying connection to %s://%s (attempt %d/%d) after %v...", clientAddr, network, addr, i, cfg.MaxRetries, cfg.RetryDelay)
+			time.Sleep(cfg.RetryDelay)
+		}
+
+		if network == "https" {
+			// For TLS connections, tls.Dial has its own connect timeout mechanism if no deadline is set on the underlying conn.
+			// However, for consistency and to respect cfg.ConnectTimeout, we'll pass it to the dialer.
+			dialer := &net.Dialer{Timeout: cfg.ConnectTimeout}
+			conn, err = tls.DialWithDialer(dialer, "tcp", addr, tlsConfig)
+		} else { // http (plain tcp)
+			conn, err = net.DialTimeout("tcp", addr, cfg.ConnectTimeout)
+		}
+
+		if err == nil {
+			return conn, nil
+		}
+
+		logger.Printf("[%s] Failed to connect to %s://%s: %v", clientAddr, network, addr, err)
+		if i == cfg.MaxRetries {
+			return nil, fmt.Errorf("failed to connect to %s://%s after %d retries: %w", network, addr, cfg.MaxRetries, err)
+		}
+	}
+	return nil, fmt.Errorf("unexpected error in dialWithRetries: connection loop finished without returning")
+}
+
 // HandleHTTPConnect manages a client connection and tunnels it through an HTTP CONNECT proxy.
 func HandleHTTPConnect(target string, clientConn net.Conn, cfg *config.Config, logger *log.Logger) {
 	defer clientConn.Close()
@@ -59,31 +93,40 @@ func HandleHTTPConnect(target string, clientConn net.Conn, cfg *config.Config, l
 
 	logger.Printf("Accepted connection from %s", clientAddr)
 
+	if cfg.ReadWriteTimeout > 0 {
+		clientConn.SetReadDeadline(time.Now().Add(cfg.ReadWriteTimeout))
+		clientConn.SetWriteDeadline(time.Now().Add(cfg.ReadWriteTimeout))
+	}
+
 	var proxyConn net.Conn
 	var err error
 
+	// Establish connection to proxy with retries
 	if cfg.ProxyScheme == "https" {
 		proxyTLSConfig, err := createTLSConfig(cfg.ProxyCACertFile, cfg.ProxyClientCertFile, cfg.ProxyClientKeyFile, cfg.InsecureProxyTLS, logger)
 		if err != nil {
 			logger.Printf("[%s] Failed to create proxy TLS config: %v", clientAddr, err)
 			return
 		}
-		proxyConn, err = tls.Dial("tcp", cfg.ProxyAddr, proxyTLSConfig)
-		if err != nil {
-			logger.Printf("[%s] Failed to connect to HTTPS proxy %s: %v", clientAddr, cfg.ProxyAddr, err)
-			return
-		}
+		proxyConn, err = dialWithRetries("https", cfg.ProxyAddr, proxyTLSConfig, cfg, logger, clientAddr)
 	} else if cfg.ProxyScheme == "http" {
-		proxyConn, err = net.Dial("tcp", cfg.ProxyAddr)
-		if err != nil {
-			logger.Printf("[%s] Failed to connect to HTTP proxy %s: %v", clientAddr, cfg.ProxyAddr, err)
-			return
-		}
+		proxyConn, err = dialWithRetries("http", cfg.ProxyAddr, nil, cfg, logger, clientAddr)
 	} else {
 		logger.Printf("[%s] Unsupported proxy scheme: %s. Must be 'http' or 'https'.", clientAddr, cfg.ProxyScheme)
 		return
 	}
+
+	if err != nil {
+		logger.Printf("[%s] Aborting connection due to proxy connection failure: %v", clientAddr, err)
+		return
+	}
 	defer proxyConn.Close()
+
+	// Apply read/write timeouts to the proxy connection
+	if cfg.ReadWriteTimeout > 0 {
+		proxyConn.SetReadDeadline(time.Now().Add(cfg.ReadWriteTimeout))
+		proxyConn.SetWriteDeadline(time.Now().Add(cfg.ReadWriteTimeout))
+	}
 
 	targetHostForConnect, _, _ := net.SplitHostPort(target)
 
@@ -129,7 +172,7 @@ func HandleHTTPConnect(target string, clientConn net.Conn, cfg *config.Config, l
 		}
 	}
 
-	var targetConn net.Conn = proxyConn
+	var targetConn net.Conn = proxyConn // Initially, the target connection is the proxy connection
 	if cfg.UseTLSOnTarget {
 		targetTLSConfig, err := createTLSConfig(cfg.TargetCACertFile, cfg.TargetClientCertFile, cfg.TargetClientKeyFile, cfg.InsecureTargetTLS, logger)
 		if err != nil {
@@ -138,7 +181,20 @@ func HandleHTTPConnect(target string, clientConn net.Conn, cfg *config.Config, l
 		}
 		targetTLSConfig.ServerName = targetHostForConnect // crucial for target TLS
 		tlsConn := tls.Client(proxyConn, targetTLSConfig)
+
+		// Set handshake timeout for target TLS
+		if cfg.ConnectTimeout > 0 {
+			tlsConn.SetReadDeadline(time.Now().Add(cfg.ConnectTimeout))
+			tlsConn.SetWriteDeadline(time.Now().Add(cfg.ConnectTimeout))
+		}
+
 		err = tlsConn.Handshake()
+		// Clear deadlines after handshake so read/write timeout applies for subsequent operations
+		if cfg.ConnectTimeout > 0 {
+			tlsConn.SetReadDeadline(time.Time{})
+			tlsConn.SetWriteDeadline(time.Time{})
+		}
+
 		if err != nil {
 			logger.Printf("[%s] Target TLS handshake failed for %s: %v", clientAddr, target, err)
 			return
@@ -149,15 +205,25 @@ func HandleHTTPConnect(target string, clientConn net.Conn, cfg *config.Config, l
 		logger.Printf("[%s] Established plain TCP connection to target %s", clientAddr, target)
 	}
 
+	// Apply read/write timeouts to the target connection as well (if it's distinct from proxyConn or after handshake)
+	if cfg.ReadWriteTimeout > 0 {
+		targetConn.SetReadDeadline(time.Now().Add(cfg.ReadWriteTimeout))
+		targetConn.SetWriteDeadline(time.Now().Add(cfg.ReadWriteTimeout))
+	}
+
 	logger.Printf("Connection established: %s <--> %s (via %s proxy %s)", clientAddr, target, cfg.ProxyScheme, cfg.ProxyAddr)
 
 	done := make(chan struct{})
 	go func() {
+		// io.Copy handles the data transfer. We'll rely on SetReadDeadline/SetWriteDeadline for timeouts.
 		_, err := io.Copy(targetConn, clientConn)
 		if err != nil {
 			logger.Printf("[%s] Error copying from client to target %s: %v", clientAddr, target, err)
 		}
-		targetConn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		// Attempt to unblock the other io.Copy by setting a short deadline if an error occurs
+		if cfg.ReadWriteTimeout > 0 {
+			clientConn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		}
 		close(done)
 	}()
 
@@ -165,7 +231,10 @@ func HandleHTTPConnect(target string, clientConn net.Conn, cfg *config.Config, l
 	if err != nil {
 		logger.Printf("[%s] Error copying from target %s to client: %v", clientAddr, target, err)
 	}
-	clientConn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	// Attempt to unblock the other io.Copy by setting a short deadline if an error occurs
+	if cfg.ReadWriteTimeout > 0 {
+		targetConn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	}
 
 	<-done
 
