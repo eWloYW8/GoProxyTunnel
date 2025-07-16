@@ -83,3 +83,13 @@ GoProxyTunnel offers several command-line flags to configure its behavior:
 | `-headers` | Comma-separated custom request headers (e.g., `"User-Agent:GoProxy,X-Forwarded-For:1.2.3.4"`). | `""` | No |
 | `-verbose` | Enable verbose logging to `stderr`. | `false` | No |
 | `-silent` | Disable all logging output to `stderr`. Recommended when using `-stdio`. | `false` | No |
+
+
+## TODO
+
+- [ ] Custom TLS certificates for proxy or target connections  
+- [ ] Loading configuration from a YAML file  
+- [ ] Option to disable certificate verification for testing purposes  
+- [ ] Configurable connection timeouts and automatic retries  
+
+Contributions are welcome! Feel free to open issues or submit pull requests to help improve this project.
