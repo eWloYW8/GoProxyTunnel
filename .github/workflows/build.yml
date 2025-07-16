@@ -51,11 +51,16 @@ jobs:
             EXT=".exe"
           fi
           FILENAME=${{ env.APP_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}${EXT}
-          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o build/$FILENAME
-          echo "Built $FILENAME"
-          # 把文件名输出到step输出变量
+      
+          VERSION=$(git describe --tags || echo "dev-build")
+      
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build \
+            -ldflags "-X main.Version=$VERSION" \
+            -o build/$FILENAME
+      
+          echo "Built $FILENAME with version $VERSION"
           echo "filename=$FILENAME" >> $GITHUB_OUTPUT
-
+      
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:

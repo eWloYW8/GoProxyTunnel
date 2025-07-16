@@ -15,6 +15,8 @@ import (
 
 var logger *log.Logger
 
+var Version = "dev-build"
+
 func init() {
 	logger = log.New(os.Stderr, "", log.LstdFlags|log.Lmicroseconds)
 }
@@ -43,7 +45,7 @@ func main() {
 		missingFlags = append(missingFlags, "target")
 	}
 
-	fmt.Fprintln(os.Stderr, "GoProxyTunnel - A TCP proxy tunnel over HTTP CONNECT in Go.")
+	fmt.Fprintf(os.Stderr, "GoProxyTunnel %s - A TCP proxy tunnel over HTTP CONNECT in Go.\n", Version)
 
 	if cfg.UseStdio && cfg.LocalListenAddrStr != "" {
 		logger.Fatalf("Error: Cannot use -stdio and -listen together. Choose one mode of operation.")
