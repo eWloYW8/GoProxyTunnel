@@ -167,7 +167,7 @@ func sendSocks5Reply(conn net.Conn, rep byte, bindAddr net.IP, bindPort int, log
 	buf := []byte{socks5Version, rep, 0x00} // VER, REP, RSV
 
 	// For CONNECT command, BND.ADDR and BND.PORT are typically 0.0.0.0:0
-	if bindAddr == nil || len(bindAddr) == 0 {
+	if len(bindAddr) == 0 {
 		buf = append(buf, socks5ATYPIPv4)         // ATYP: IPv4
 		buf = append(buf, 0x00, 0x00, 0x00, 0x00) // BND.ADDR: 0.0.0.0
 		buf = append(buf, 0x00, 0x00)             // BND.PORT: 0

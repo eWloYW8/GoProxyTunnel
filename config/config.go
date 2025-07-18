@@ -19,7 +19,7 @@ type Config struct {
 	LocalListenAddrStr string
 	ProxyScheme        string
 	ProxyAddrStr       string
-	TargetAddrStr      string // unused in SOCKS5 mode
+	TargetAddrStr      string
 	UseTLSOnTarget     bool
 	CustomHeadersStr   string
 	AuthorizationCreds string
@@ -37,21 +37,19 @@ type Config struct {
 	InsecureProxyTLS     bool
 	InsecureTargetTLS    bool
 
-	ConnectTimeout   time.Duration // Timeout for establishing a new connection
-	ReadWriteTimeout time.Duration // Timeout for read/write operations on established connections
-	MaxRetries       int           // Maximum number of connection retries
-	RetryDelay       time.Duration // Delay between retry attempts
+	ConnectTimeout   time.Duration
+	ReadWriteTimeout time.Duration
+	MaxRetries       int
+	RetryDelay       time.Duration
 
 	LocalListenAddr *net.TCPAddr
 	ProxyAddr       string
-	TargetAddr      string // This will be set dynamically per SOCKS5 request
+	TargetAddr      string
 	CustomHeaders   map[string]string
 
-	ConfigFile string // New field for YAML config file path
+	ConfigFile string
 }
 
-// YAMLConfig represents the structure of the YAML configuration file.
-// It allows for defining multiple proxy configurations (workers).
 type YAMLConfig struct {
 	Workers []struct {
 		Listen      string `yaml:"listen"`
@@ -74,13 +72,12 @@ type YAMLConfig struct {
 		TargetClientKey   string `yaml:"target_client_key"`
 		InsecureTargetTLS bool   `yaml:"insecure_target_tls"`
 
-		ConnectTimeout   string `yaml:"connect_timeout"` // Use string for duration parsing
-		ReadWriteTimeout string `yaml:"rw_timeout"`      // Use string for duration parsing
+		ConnectTimeout   string `yaml:"connect_timeout"`
+		ReadWriteTimeout string `yaml:"rw_timeout"`
 		MaxRetries       int    `yaml:"max_retries"`
-		RetryDelay       string `yaml:"retry_delay"` // Use string for duration parsing
+		RetryDelay       string `yaml:"retry_delay"`
 	} `yaml:"workers"`
 
-	// Global settings that can be overridden by command-line flags
 	VerboseLog bool `yaml:"verbose_log"`
 	SilentLog  bool `yaml:"silent_log"`
 }
@@ -160,8 +157,8 @@ func LoadConfigFromYAML(filePath string, logger *log.Logger) ([]*Config, error) 
 			TargetClientKeyFile:  worker.TargetClientKey,
 			InsecureTargetTLS:    worker.InsecureTargetTLS,
 			MaxRetries:           worker.MaxRetries,
-			VerboseLog:           yamlCfg.VerboseLog, // Global setting from YAML
-			SilentLog:            yamlCfg.SilentLog,  // Global setting from YAML
+			VerboseLog:           yamlCfg.VerboseLog,
+			SilentLog:            yamlCfg.SilentLog,
 		}
 
 		// Parse durations
@@ -339,7 +336,7 @@ func PrintUsage() {
 	}
 }
 
-// EncodeBase64 is a helper function for encoding strings to Base64.
+// Helper function for encoding strings to Base64.
 func EncodeBase64(s string) string {
 	return base64.StdEncoding.EncodeToString([]byte(s))
 }

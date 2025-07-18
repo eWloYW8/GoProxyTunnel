@@ -23,10 +23,8 @@ func init() {
 }
 
 func main() {
-	cfg := config.ParseFlags() // Parse command-line flags first
+	cfg := config.ParseFlags()
 
-	// If a config file is specified, load configurations from it.
-	// Command-line flags might still override global settings like VerboseLog or SilentLog.
 	var workerConfigs []*config.Config
 	if cfg.ConfigFile != "" {
 		loadedConfigs, err := config.LoadConfigFromYAML(cfg.ConfigFile, logger)
@@ -36,7 +34,6 @@ func main() {
 		workerConfigs = loadedConfigs
 		logger.Printf("Loaded %d worker configurations from %s", len(workerConfigs), cfg.ConfigFile)
 	} else {
-		// If no config file, use the single configuration parsed from flags
 		workerConfigs = []*config.Config{cfg}
 	}
 
@@ -50,20 +47,16 @@ func main() {
 
 	fmt.Fprintf(os.Stderr, "GoProxyTunnel %s - A TCP proxy tunnel over HTTP CONNECT in Go.\n", Version)
 
-	var wg sync.WaitGroup // Use a WaitGroup to wait for all workers to finish (though typically they run indefinitely)
+	var wg sync.WaitGroup
 
 	for i, workerCfg := range workerConfigs {
-		// Apply global flags (like VerboseLog, SilentLog) to each worker config if loaded from YAML,
-		// as these are typically controlled globally or per invocation, not per proxy instance.
-		// If using only flags, these are already set.
 		workerCfg.VerboseLog = cfg.VerboseLog
 		if cfg.SilentLog {
-			logger.SetOutput(io.Discard) // Re-apply if silent was set by flag
+			logger.SetOutput(io.Discard)
 		} else {
-			logger.SetOutput(os.Stderr) // Ensure it's not discarded if silent is off
+			logger.SetOutput(os.Stderr)
 		}
 
-		// Validate individual worker configuration
 		missingFlags := []string{}
 		if workerCfg.ProxyAddrStr == "" {
 			missingFlags = append(missingFlags, "proxy")
@@ -87,11 +80,10 @@ func main() {
 
 		if len(missingFlags) > 0 {
 			logger.Printf("Missing required arguments for Worker %d: %s.\nUse -h for help.", i+1, strings.Join(missingFlags, ", "))
-			config.PrintUsage() // Still print global usage
+			config.PrintUsage()
 			os.Exit(1)
 		}
 
-		// Initialize network addresses and custom headers for each worker
 		var err error
 		if !workerCfg.UseStdio {
 			workerCfg.LocalListenAddr, err = net.ResolveTCPAddr("tcp", workerCfg.LocalListenAddrStr)
@@ -136,7 +128,6 @@ func main() {
 			logger.Printf("Worker %d: Authorization credentials provided and automatically encoded.", i+1)
 		}
 
-		// Launch worker in a goroutine
 		wg.Add(1)
 		go func(cfg *config.Config, workerID int) {
 			defer wg.Done()
@@ -144,7 +135,7 @@ func main() {
 		}(workerCfg, i+1)
 	}
 
-	wg.Wait() // Wait for all workers to finish (will block indefinitely for server modes)
+	wg.Wait()
 	logger.Println("All GoProxyTunnel workers have stopped.")
 }
 
