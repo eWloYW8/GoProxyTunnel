@@ -200,11 +200,6 @@ The YAML fields generally correspond to the command-line flags, with some naming
 
 -----
 
-## TODO
+## About
 
-- [x] Custom TLS certificates for proxy or target connections  
-- [x] Loading configuration from a YAML file  
-- [x] Option to disable certificate verification for testing purposes  
-- [x] Configurable connection timeouts and automatic retries  
-
-Contributions are welcome! Feel free to open issues or submit pull requests to help improve this project.
+This project was created as a practice exercise for learning and improving Go (Golang) programming skills.
